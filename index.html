@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gaming News</title>
+
+<style>
+:root { color-scheme: dark; }
+
+body {
+  margin:0;
+  background:#000;
+  color:#e5e5e7;
+  font-family:-apple-system,BlinkMacSystemFont,system-ui;
+}
+
+.card { margin-bottom:22px; }
+
+img {
+  width:100%;
+  aspect-ratio:16/9;
+  object-fit:cover;
+}
+
+.content { padding:14px; }
+
+.title {
+  font-size:18px;
+  font-weight:600;
+  color:#fff;
+}
+
+.meta {
+  font-size:13px;
+  color:#9a9a9c;
+  margin-top:6px;
+}
+
+#reader {
+  display:none;
+  padding:20px 16px 100px;
+}
+
+.articlePage {
+  max-width:42em;
+  margin:0 auto;
+}
+
+.articlePage h2 {
+  font-size:26px;
+  margin:16px 0 22px;
+  color:#fff;
+}
+
+.articlePage p {
+  font-size:19px;
+  line-height:1.75;
+  color:#d1d1d6;
+  margin-bottom:1.3em;
+}
+
+#backBtn {
+  position:fixed;
+  bottom:16px;
+  left:16px;
+  right:16px;
+  padding:16px;
+  font-size:17px;
+  background:#1c1c1e;
+  color:#fff;
+  border:1px solid #2c2c2e;
+  border-radius:14px;
+}
+
+#loadMore {
+  margin:30px 16px 50px;
+  padding:18px;
+  font-size:17px;
+  background:#1c1c1e;
+  color:#fff;
+  border:1px solid #2c2c2e;
+  border-radius:14px;
+  text-align:center;
+}
+</style>
+</head>
+
+<body>
+
+<div id="feed"></div>
+
+<div id="reader">
+  <div class="articlePage" id="articleContent"></div>
+  <button id="backBtn" onclick="backToFeed()">⬅︎ Back to feed</button>
+</div>
+
+<script>
+
+// ---------- CONFIG ----------
+
+const feeds = [
+  { url:"https://api.allorigins.win/raw?url=https://feeds.ign.com/ign/all", name:"IGN" },
+  { url:"https://api.allorigins.win/raw?url=https://www.pcgamer.com/rss/", name:"PC Gamer" },
+  { url:"https://api.allorigins.win/raw?url=https://www.eurogamer.net/feed", name:"Eurogamer" },
+  { url:"https://api.allorigins.win/raw?url=https://kotaku.com/rss", name:"Kotaku" },
+  { url:"https://api.allorigins.win/raw?url=https://www.polygon.com/rss/index.xml", name:"Polygon" }
+];
+
+// ---------- STATE ----------
+
+let dayOffset = 0;
+let scrollPos = 0;
+
+// ---------- HELPERS ----------
+
+function parseDate(str){
+  const d = new Date(str);
+  return isNaN(d) ? null : d;
+}
+
+function extract(tag, text){
+  const re = new RegExp("<"+tag+"[^>]*>([\\s\\S]*?)<\\/"+tag+">");
+  return text.match(re)?.[1] || null;
+}
+
+function extractImage(item){
+  return (
+    item.match(/<media:content[^>]*url="(.*?)"/)?.[1] ||
+    item.match(/<media:thumbnail[^>]*url="(.*?)"/)?.[1] ||
+    item.match(/<enclosure[^>]*url="(.*?)"/)?.[1] ||
+    null
+  );
+}
+
+// ---------- LOAD DAY ----------
+
+async function loadDay(offset){
+
+  const start = new Date();
+  start.setHours(0,0,0,0);
+  start.setDate(start.getDate() - offset);
+
+  const end = new Date(start);
+  end.setDate(start.getDate() + 1);
+
+  let results = [];
+
+  for(const feed of feeds){
+    try{
+      const res = await fetch(feed.url);
+      const xml = await res.text();
+
+      const items = xml.match(/<item>[\s\S]*?<\/item>/g) || [];
+
+      for(const item of items){
+
+        const title = extract("title", item)?.replace(/<!\[CDATA\[|\]\]>/g,"").trim();
+        const dateStr = extract("pubDate", item) || extract("dc:date", item);
+        const content = extract("content:encoded", item) || extract("description", item);
+
+        if(!title || !dateStr || !content) continue;
+
+        const date = parseDate(dateStr);
+        if(!date) continue;
+
+        if(date >= start && date < end){
+          results.push({
+            title,
+            source:feed.name,
+            date,
+            image:extractImage(item),
+            content
+          });
+        }
+      }
+
+    }catch{}
+  }
+
+  results.sort((a,b)=>b.date-a.date);
+  return results;
+}
+
+// ---------- RENDER ----------
+
+function renderCard(article){
+
+  const time = article.date.toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"});
+
+  return `
+    <div class="card" onclick='openArticle(${JSON.stringify(article)})'>
+      ${article.image ? `<img src="${article.image}">` : ""}
+      <div class="content">
+        <div class="title">${article.title}</div>
+        <div class="meta">${article.source} · ${time}</div>
+      </div>
+    </div>
+  `;
+}
+
+function openArticle(article){
+  scrollPos = window.scrollY;
+
+  document.getElementById("feed").style.display="none";
+  document.getElementById("reader").style.display="block";
+
+  document.getElementById("articleContent").innerHTML =
+    (article.image ? `<img src="${article.image}">` : "") +
+    `<h2>${article.title}</h2>` +
+    article.content;
+
+  window.scrollTo(0,0);
+}
+
+function backToFeed(){
+  document.getElementById("reader").style.display="none";
+  document.getElementById("feed").style.display="block";
+  window.scrollTo(0,scrollPos);
+}
+
+// ---------- INITIAL LOAD ----------
+
+async function init(){
+  const articles = await loadDay(dayOffset);
+  const feed = document.getElementById("feed");
+
+  articles.forEach(a=>{
+    feed.insertAdjacentHTML("beforeend", renderCard(a));
+  });
+
+  feed.insertAdjacentHTML("beforeend",
+    `<div id="loadMore" onclick="loadPrevious()">Load previous day</div>`
+  );
+}
+
+async function loadPrevious(){
+  dayOffset++;
+  const articles = await loadDay(dayOffset);
+
+  const loadBtn = document.getElementById("loadMore");
+
+  articles.forEach(a=>{
+    loadBtn.insertAdjacentHTML("beforebegin", renderCard(a));
+  });
+}
+
+init();
+
+</script>
+</body>
+</html>
