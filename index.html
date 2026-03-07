@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/686/686589.png">
+    <title>Gaming News</title>
+    
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+    <style>
+        :root { color-scheme: dark; }
+        body { margin: 0; background: #000; color: #e5e5e7; font-family: -apple-system, sans-serif; overflow-x: hidden; -webkit-tap-highlight-color: transparent; }
+
+        /* --- Header Styles --- */
+        header { 
+            position: fixed; top: 0; left: 0; right: 0;
+            background: rgba(0,0,0,0.85); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+            display: flex; align-items: center; justify-content: flex-end;
+            z-index: 1000; border-bottom: 1px solid #1c1c1e;
+            transition: padding 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+            padding: calc(15px + env(safe-area-inset-top)) 20px 15px;
+        }
+
+        header.at-top { padding: calc(65px + env(safe-area-inset-top)) 20px 65px; }
+
+        .app-title { 
+            position: absolute;
+            font-family: 'Press Start 2P', cursive; font-size: 5px; color: #fff; 
+            text-transform: uppercase; margin: 0; line-height: 1; letter-spacing: 2px;
+            transform-origin: center center;
+            transition: all 0.5s cubic-bezier(0.16, 1, 0.3, 1), color 0.3s ease;
+        }
+
+        header.at-top .app-title { left: 50%; transform: translateX(-50%) scale(2.8); }
+        header:not(.at-top) .app-title { left: 20px; transform: translateX(0) scale(1.2); }
+        
+        .bed-mode-toggle { 
+            cursor: pointer; padding: 5px;
+            display: flex; align-items: center; justify-content: center;
+            transition: color 0.3s ease; color: #888; 
+        }
+        
+        .lucide { width: 14px; height: 14px; stroke-width: 2.5px; }
+
+        .bed-active-ui .app-title { color: #444; } 
+        .bed-active-ui .bed-mode-toggle { color: #444; } 
+
+        /* --- Main Feed --- */
+        #feed-container { 
+            padding-top: calc(160px + env(safe-area-inset-top)); 
+            padding-bottom: calc(80px + env(safe-area-inset-bottom)); 
+            transition: opacity 0.4s ease;
+        }
+        #feed-container.bed-active { opacity: 0.3; filter: grayscale(0.5); }
+
+        .card { margin-bottom: 30px; border-bottom: 1px solid #1c1c1e; padding-bottom: 20px; }
+        
+        /* 3D Thumbnail with Bottom Shadow */
+        .thumb-wrapper { 
+            width: 100%; aspect-ratio: 16/9; overflow: hidden; background: #0a0a0a; cursor: pointer; 
+            position: relative; border-radius: 4px;
+            /* Bottom inner shadow for 3D depth */
+            box-shadow: inset 0 -50px 40px -20px rgba(0,0,0,0.95);
+        }
+
+        .parallax-thumb { 
+            width: 100%; height: 100%; object-fit: cover; 
+            will-change: transform; pointer-events: none; 
+            transform: scale(1.1);
+            opacity: 0;
+            transition: opacity 0.8s ease-in-out;
+        }
+        
+        .parallax-thumb.visible { opacity: 1; }
+
+        .content { padding: 15px 16px; }
+        .title { font-size: 17px; font-weight: 700; color: #fff; line-height: 1.3; margin-bottom: 8px; }
+        .meta { font-size: 11px; color: #888; text-transform: uppercase; letter-spacing: 0.5px; }
+
+        /* --- UI Components --- */
+        #scrollTop {
+            position: fixed; bottom: calc(30px + env(safe-area-inset-bottom)); right: 20px;
+            width: 44px; height: 44px; background: rgba(30, 30, 32, 0.8);
+            border: 1px solid #333; border-radius: 50%; color: #fff;
+            display: flex; align-items: center; justify-content: center;
+            z-index: 1001; opacity: 0; visibility: hidden;
+            transition: all 0.3s ease; backdrop-filter: blur(10px);
+        }
+        #scrollTop.visible { opacity: 1; visibility: visible; }
+
+        .loading { text-align: center; padding: 100px 20px; font-family: 'Press Start 2P'; font-size: 7px; color: #555; }
+    </style>
+</head>
+<body id="mainBody">
+
+<header id="mainHeader" class="at-top">
+    <div class="app-title" id="logo">Gaming News</div>
+    <div class="bed-mode-toggle" id="bedBtn" onclick="toggleBed()">
+        <i data-lucide="moon"></i>
+    </div>
+</header>
+
+<div id="feed-container">
+    <div id="status" class="loading">CONNECTING TO FEED...</div>
+    <div id="feed"></div>
+</div>
+
+<button id="scrollTop" onclick="scrollToTop()">
+    <i data-lucide="chevron-up"></i>
+</button>
+
+<script>
+const feeds = [
+    { url: "https://www.videogameschronicle.com/feed/", name: "VGC" },
+    { url: "https://aftermath.site/feed", name: "Aftermath" },
+    { url: "https://www.pcgamer.com/rss/", name: "PC Gamer" },
+    { url: "https://www.eurogamer.net/feed", name: "Eurogamer" },
+    { url: "https://kotaku.com/rss", name: "Kotaku" }
+];
+
+let allArticles = [];
+const proxy = "https://corsproxy.io/?";
+
+// Safe image loader to prevent Safari pop-in
+function loadImage(url, imgElement) {
+    const tempImg = new Image();
+    tempImg.onload = () => {
+        imgElement.src = url;
+        imgElement.classList.add('visible');
+    };
+    tempImg.src = url;
+}
+
+async function fetchAll() {
+    const container = document.getElementById("feed");
+    const status = document.getElementById("status");
+    
+    try {
+        const fetchPromises = feeds.map(async (f) => {
+            try {
+                const response = await fetch(proxy + encodeURIComponent(f.url));
+                const text = await response.text();
+                const xml = new DOMParser().parseFromString(text, "text/xml");
+                const items = xml.querySelectorAll("item");
+                
+                items.forEach(el => {
+                    const title = el.querySelector("title")?.textContent || "";
+                    const link = el.querySelector("link")?.textContent || "";
+                    const date = new Date(el.querySelector("pubDate")?.textContent || 0);
+                    
+                    const rawStr = new XMLSerializer().serializeToString(el);
+                    let imgMatch = rawStr.match(/<media:content[^>]+url=["']([^"']+)["']/i) ||
+                                   rawStr.match(/<enclosure[^>]+url=["']([^"']+)["']/i) ||
+                                   rawStr.match(/<img[^>]+src=["']([^"']+)["']/i);
+                    
+                    if (title && link) {
+                        allArticles.push({ title, link, date, source: f.name, image: imgMatch ? imgMatch[1] : null });
+                    }
+                });
+            } catch (e) { console.error("Source failed: " + f.name); }
+        });
+
+        await Promise.all(fetchPromises);
+        allArticles.sort((a, b) => b.date - a.date);
+        
+        status.style.display = "none";
+        render();
+    } catch (err) {
+        status.innerText = "FEED TEMPORARILY UNAVAILABLE";
+    }
+}
+
+function render() {
+    const container = document.getElementById("feed");
+    container.innerHTML = "";
+    
+    allArticles.slice(0, 40).forEach((a) => {
+        const card = document.createElement("div");
+        card.className = "card";
+        
+        let imgTag = "";
+        if (a.image) {
+            imgTag = `<div class="thumb-wrapper" onclick="window.open('${a.link}', '_blank')">
+                        <img class="parallax-thumb" data-src="${a.image}">
+                      </div>`;
+        }
+
+        card.innerHTML = `
+            ${imgTag}
+            <div class="content">
+                <div class="title" onclick="window.open('${a.link}', '_blank')">${a.title}</div>
+                <div class="meta">${a.source} • ${a.date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</div>
+            </div>
+        `;
+        container.appendChild(card);
+    });
+
+    // Initialize images after they are in DOM
+    document.querySelectorAll('.parallax-thumb').forEach(img => {
+        loadImage(img.getAttribute('data-src'), img);
+    });
+    
+    updateLayout();
+}
+
+function updateLayout() {
+    const scrollY = window.scrollY;
+    const windowHeight = window.innerHeight;
+    
+    // Header Scale
+    const header = document.getElementById('mainHeader');
+    if (scrollY < 50) header.classList.add('at-top');
+    else header.classList.remove('at-top');
+
+    // Scroll Top Visibility
+    const st = document.getElementById('scrollTop');
+    if (scrollY > 600) st.classList.add('visible');
+    else st.classList.remove('visible');
+
+    // Parallax Math (Subtle 20% prominence)
+    const thumbs = document.querySelectorAll('.parallax-thumb');
+    thumbs.forEach(thumb => {
+        const rect = thumb.parentElement.getBoundingClientRect();
+        if (rect.top <= windowHeight && rect.bottom >= 0) {
+            const centerOffset = (windowHeight / 2) - (rect.top + rect.height / 2);
+            // Adjusted for 20% prominence
+            const yMove = centerOffset * 0.08; 
+            thumb.style.transform = `scale(1.15) translate3d(0, ${yMove}px, 0)`;
+        }
+    });
+}
+
+function toggleBed() {
+    const feed = document.getElementById('feed-container');
+    const body = document.getElementById('mainBody');
+    const btn = document.getElementById('bedBtn');
+    
+    feed.classList.toggle('bed-active');
+    body.classList.toggle('bed-active-ui');
+    
+    const isBed = feed.classList.contains('bed-active');
+    btn.innerHTML = isBed ? '<i data-lucide="sun"></i>' : '<i data-lucide="moon"></i>';
+    lucide.createIcons();
+}
+
+function scrollToTop() {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+window.addEventListener('scroll', updateLayout, { passive: true });
+window.onload = () => {
+    lucide.createIcons();
+    fetchAll();
+};
+</script>
+</body>
+</html>
