@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>Gaming News</title>
+    
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+    <style>
+        :root { color-scheme: dark; }
+        body { 
+            margin: 0; background: #000; color: #e5e5e7; 
+            font-family: -apple-system, sans-serif; 
+            -webkit-tap-highlight-color: transparent; 
+            transition: background 0.3s ease; 
+        }
+
+        /* --- Fixed Header --- */
+        header { 
+            position: fixed; top: 0; left: 0; right: 0;
+            background: rgba(10, 10, 10, 0.95); backdrop-filter: blur(15px); -webkit-backdrop-filter: blur(15px);
+            z-index: 1000; border-bottom: 1px solid #1c1c1e;
+            height: calc(60px + env(safe-area-inset-top));
+            display: flex; align-items: flex-end; justify-content: space-between;
+            padding: 0 20px 12px; box-sizing: border-box;
+        }
+
+        .app-title { 
+            font-family: 'Press Start 2P', cursive; font-size: 10px; color: #fff; 
+            text-transform: uppercase; margin: 0; letter-spacing: 1px;
+            transition: color 0.3s ease;
+        }
+        
+        .bed-mode-toggle { cursor: pointer; color: #888; transition: color 0.3s ease; display: flex; align-items: center;}
+        .lucide { width: 18px; height: 18px; }
+
+        /* --- Bed Mode Overrides --- */
+        body.bed-mode .app-title { color: #444; }
+        body.bed-mode .bed-mode-toggle { color: #444; }
+        body.bed-mode #feed-container { opacity: 0.25; filter: grayscale(0.6); }
+        
+        /* Dimming the Scroll Controls in Bed Mode */
+        body.bed-mode .nav-fab { 
+            background: rgba(15, 15, 15, 0.8); 
+            border-color: #222; 
+            color: #444; 
+        }
+
+        /* --- Feed Layout --- */
+        #feed-container { 
+            margin-top: calc(60px + env(safe-area-inset-top)); 
+            padding-bottom: 80px;
+            transition: opacity 0.4s ease, filter 0.4s ease;
+        }
+
+        #ptr { 
+            height: 0; overflow: hidden; text-align: center; background: #111;
+            font-family: 'Press Start 2P', cursive; font-size: 8px; color: #555;
+            display: flex; align-items: center; justify-content: center;
+        }
+
+        .card { border-bottom: 1px solid #1c1c1e; padding-bottom: 20px; margin-bottom: 20px; }
+        
+        .thumb-wrapper { 
+            width: 100%; aspect-ratio: 16/9; background: #111; 
+            overflow: hidden; display: block;
+        }
+
+        .thumb-wrapper img { 
+            width: 100%; height: 100%; object-fit: cover; display: block;
+        }
+
+        .content { padding: 15px 16px; }
+        .title { font-size: 18px; font-weight: 700; color: #fff; line-height: 1.3; margin-bottom: 8px; cursor: pointer;}
+        .meta { font-size: 11px; color: #aaa; text-transform: uppercase; font-weight: 600; }
+
+        /* --- Scroll Navigation Cluster --- */
+        #scrollNav {
+            position: fixed; bottom: calc(20px + env(safe-area-inset-bottom)); right: 20px;
+            display: flex; flex-direction: column; gap: 12px; z-index: 2000;
+            opacity: 0; visibility: hidden; transition: opacity 0.3s ease, visibility 0.3s;
+        }
+        #scrollNav.visible { opacity: 1; visibility: visible; }
+
+        .nav-fab {
+            width: 44px; height: 44px; background: rgba(30, 30, 32, 0.9); border: 1px solid #444;
+            border-radius: 50%; color: #ccc; display: flex; align-items: center; 
+            justify-content: center; cursor: pointer; backdrop-filter: blur(10px);
+            transition: all 0.3s ease; -webkit-touch-callout: none; user-select: none;
+        }
+
+        /* Layout for Down + Slide-out Lock */
+        .down-wrapper { position: relative; display: flex; align-items: center; justify-content: flex-end; }
+        
+        #scrollLock {
+            position: absolute; right: 0; width: 44px; height: 44px; 
+            background: rgba(40, 40, 45, 0.95); border: 1px solid #555; border-radius: 50%;
+            display: flex; align-items: center; justify-content: center; color: #aaa;
+            opacity: 0; pointer-events: none; transform: translateX(0) scale(0.8);
+            transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+
+        /* Show lock when dragging down button */
+        .down-wrapper.active #scrollLock { 
+            opacity: 1; pointer-events: auto; transform: translateX(-60px) scale(1); 
+        }
+        
+        /* Visual feedback states */
+        #scrollLock.hovered { background: #4caf50; border-color: #4caf50; color: #fff; transform: translateX(-60px) scale(1.1); }
+        #scrollLock.locked { background: #2196f3; border-color: #2196f3; color: #fff; opacity: 1; transform: translateX(-60px) scale(1); }
+        .down-wrapper.is-locked #scrollLock { opacity: 1; transform: translateX(-60px) scale(1); }
+        .down-wrapper.is-locked #scrollDown { background: #222; color: #555; } /* Dim down arrow when locked */
+
+        .loading { text-align: center; padding: 40px; font-family: 'Press Start 2P'; font-size: 7px; color: #444; }
+    </style>
+</head>
+<body>
+
+<header id="mainHeader">
+    <div class="app-title">Gaming News</div>
+    <div class="bed-mode-toggle" id="bedBtn" onclick="toggleBed()">
+        <i data-lucide="moon"></i>
+    </div>
+</header>
+
+<div id="feed-container">
+    <div id="ptr">PULL TO REFRESH</div>
+    <div id="status" class="loading">CONNECTING TO LIVE SERVERS...</div>
+    <div id="feed"></div>
+    <div id="loadingMore" class="loading" style="display: none;">LOADING MORE...</div>
+</div>
+
+<div id="scrollNav">
+    <div class="nav-fab" id="scrollTop" onclick="scrollToTop()">
+        <i data-lucide="chevron-up"></i>
+    </div>
+    <div class="down-wrapper" id="downWrapper">
+        <div id="scrollLock"><i data-lucide="lock"></i></div>
+        <div class="nav-fab" id="scrollDown"><i data-lucide="chevron-down"></i></div>
+    </div>
+</div>
+
+<script>
+const feeds = [
+    { url: "https://www.videogameschronicle.com/feed/", name: "VGC" },
+    { url: "https://aftermath.site/feed", name: "Aftermath" },
+    { url: "https://www.pcgamer.com/rss/", name: "PC Gamer" },
+    { url: "https://www.eurogamer.net/feed", name: "Eurogamer" },
+    { url: "https://kotaku.com/rss", name: "Kotaku" },
+    { url: "https://www.polygon.com/rss/index.xml", name: "Polygon" },
+    { url: "https://www.gamespot.com/feeds/mashup/", name: "GameSpot" }
+];
+
+let allArticles = [];
+let renderedCount = 0;
+const chunkSize = 15;
+let isFetching = false;
+
+const proxy = "https://api.codetabs.com/v1/proxy?quest=";
+
+async function fetchAll(isRefresh = false) {
+    if (isFetching) return;
+    isFetching = true;
+    if (!isRefresh) document.getElementById("status").style.display = "block";
+
+    try {
+        const fetchPromises = feeds.map(async (f) => {
+            try {
+                const nocache = f.url + "?update=" + new Date().getTime() + Math.random();
+                const response = await fetch(proxy + encodeURIComponent(nocache));
+                const text = await response.text();
+                const xml = new DOMParser().parseFromString(text, "text/xml");
+                const items = xml.querySelectorAll("item, entry");
+                
+                items.forEach(el => {
+                    const title = el.querySelector("title")?.textContent || "";
+                    const link = el.querySelector("link")?.getAttribute("href") || el.querySelector("link")?.textContent || "";
+                    const date = new Date(el.querySelector("pubDate, published, updated")?.textContent || 0);
+                    const rawStr = new XMLSerializer().serializeToString(el);
+                    let imgMatch = rawStr.match(/<media:content[^>]+url=["']([^"']+)["']/i) ||
+                                   rawStr.match(/<enclosure[^>]+url=["']([^"']+)["']/i) ||
+                                   rawStr.match(/<img[^>]+src=["']([^"']+)["']/i);
+                    
+                    if (title && link) {
+                        allArticles.push({ title, link, date, source: f.name, image: imgMatch ? imgMatch[1] : null });
+                    }
+                });
+            } catch (e) { console.error("Feed error"); }
+        });
+
+        await Promise.all(fetchPromises);
+        
+        allArticles = Array.from(new Map(allArticles.map(a => [a.link, a])).values());
+        allArticles.sort((a, b) => b.date - a.date);
+        
+        document.getElementById("status").style.display = "none";
+        if (isRefresh) { renderedCount = 0; document.getElementById("feed").innerHTML = ""; }
+        renderNextChunk();
+    } finally { isFetching = false; }
+}
+
+function renderNextChunk() {
+    const container = document.getElementById("feed");
+    const nextBatch = allArticles.slice(renderedCount, renderedCount + chunkSize);
+    
+    nextBatch.forEach((a) => {
+        const card = document.createElement("div");
+        card.className = "card";
+        const imgHtml = a.image ? `<div class="thumb-wrapper" onclick="window.open('${a.link}', '_blank')"><img src="${a.image}" loading="lazy"></div>` : "";
+        
+        card.innerHTML = `
+            ${imgHtml}
+            <div class="content">
+                <div class="title" onclick="window.open('${a.link}', '_blank')">${a.title}</div>
+                <div class="meta">${a.source} • ${formatSmartDate(a.date)}</div>
+            </div>
+        `;
+        container.appendChild(card);
+    });
+    renderedCount += nextBatch.length;
+}
+
+function formatSmartDate(dateObj) {
+    const now = new Date();
+    const timeStr = dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const articleDay = new Date(dateObj.getFullYear(), dateObj.getMonth(), dateObj.getDate());
+    const daysOld = Math.floor((today - articleDay) / (1000 * 60 * 60 * 24));
+
+    if (daysOld === 0) {
+        const diffMins = Math.floor((now - dateObj) / 1000 / 60);
+        if (diffMins < 60) return diffMins + "m ago";
+        return timeStr;
+    } else if (daysOld === 1) return `Yesterday • ${timeStr}`;
+    else if (daysOld <= 3) return `${dateObj.toLocaleDateString('en-US', {month: 'short', day: 'numeric'})} • ${timeStr}`;
+    else return dateObj.toLocaleDateString('en-US', {month: 'short', day: 'numeric'});
+}
+
+window.onscroll = () => {
+    // Show nav cluster after scrolling down
+    const nav = document.getElementById("scrollNav");
+    if (window.scrollY > 400) nav.classList.add("visible");
+    else nav.classList.remove("visible");
+
+    // Infinite scroll trigger
+    if (!isFetching && (window.innerHeight + window.scrollY) >= document.body.offsetHeight - 800) {
+        renderNextChunk();
+    }
+};
+
+/* --- Auto-Scroll & Lock Logic --- */
+let scrollRaf;
+let isScrolling = false;
+let isLocked = false;
+const scrollSpeed = 1.2; // Smooth prompter speed
+
+const downBtn = document.getElementById('scrollDown');
+const lockBtn = document.getElementById('scrollLock');
+const wrapper = document.getElementById('downWrapper');
+
+function performScroll() {
+    if (isScrolling || isLocked) {
+        window.scrollBy(0, scrollSpeed);
+        scrollRaf = requestAnimationFrame(performScroll);
+    }
+}
+
+function stopAutoScroll() {
+    isScrolling = false;
+    isLocked = false;
+    wrapper.classList.remove('active');
+    wrapper.classList.remove('is-locked');
+    lockBtn.classList.remove('locked', 'hovered');
+    cancelAnimationFrame(scrollRaf);
+}
+
+// Touch controls for Down Arrow & Slide-to-Lock
+wrapper.addEventListener('touchstart', (e) => {
+    if(e.target.closest('#scrollTop')) return;
+    
+    // Only engage if interacting with the down button
+    if(e.target.closest('#scrollDown')) {
+        isScrolling = true;
+        isLocked = false;
+        wrapper.classList.add('active');
+        wrapper.classList.remove('is-locked');
+        lockBtn.classList.remove('locked');
+        cancelAnimationFrame(scrollRaf);
+        performScroll();
+    }
+}, {passive: false});
+
+// Track finger movement to see if they hover the lock
+wrapper.addEventListener('touchmove', (e) => {
+    if (!isScrolling) return;
+    e.preventDefault(); // Prevents the screen from trying to natively drag/swipe
+    
+    const touch = e.touches[0];
+    const el = document.elementFromPoint(touch.clientX, touch.clientY);
+    const isOverLock = el && (el.id === 'scrollLock' || el.closest('#scrollLock'));
+    
+    if (isOverLock) lockBtn.classList.add('hovered');
+    else lockBtn.classList.remove('hovered');
+}, {passive: false});
+
+// Execute action on release
+wrapper.addEventListener('touchend', (e) => {
+    if (!isScrolling) return;
+    isScrolling = false;
+    
+    const touch = e.changedTouches[0];
+    const el = document.elementFromPoint(touch.clientX, touch.clientY);
+    const isOverLock = el && (el.id === 'scrollLock' || el.closest('#scrollLock'));
+    
+    if (isOverLock) {
+        // Engage hands-free lock
+        isLocked = true;
+        lockBtn.classList.remove('hovered');
+        lockBtn.classList.add('locked');
+        wrapper.classList.add('is-locked');
+        performScroll(); 
+    } else {
+        // Stop scroll completely
+        stopAutoScroll();
+    }
+});
+
+// Break the lock if user touches anywhere else on the screen
+document.addEventListener('touchstart', (e) => {
+    if (isLocked && !e.target.closest('#downWrapper')) {
+        stopAutoScroll();
+    }
+}, {passive: true});
+
+/* --- Desktop/Mouse fallbacks --- */
+downBtn.addEventListener('mousedown', () => { isScrolling = true; performScroll(); });
+downBtn.addEventListener('mouseup', () => { if(!isLocked) stopAutoScroll(); });
+downBtn.addEventListener('mouseleave', () => { if(!isLocked) stopAutoScroll(); });
+lockBtn.addEventListener('click', () => { 
+    isLocked = !isLocked; 
+    if(isLocked) { lockBtn.classList.add('locked'); wrapper.classList.add('is-locked'); performScroll(); }
+    else stopAutoScroll(); 
+});
+
+
+/* --- PTR Logic --- */
+let startY = 0;
+const ptr = document.getElementById("ptr");
+document.addEventListener('touchstart', e => { if (window.scrollY <= 0) startY = e.touches[0].clientY; }, {passive: true});
+document.addEventListener('touchmove', e => {
+    if (startY > 0 && window.scrollY <= 0) {
+        let dy = e.touches[0].clientY - startY;
+        if (dy > 0) ptr.style.height = Math.min(dy * 0.4, 50) + "px";
+    }
+}, {passive: true});
+document.addEventListener('touchend', () => {
+    if (parseInt(ptr.style.height) > 40) {
+        ptr.innerText = "LOADING...";
+        fetchAll(true).then(() => { ptr.style.height = "0"; ptr.innerText = "PULL TO REFRESH"; });
+    } else ptr.style.height = "0";
+    startY = 0;
+}, {passive: true});
+
+function toggleBed() {
+    document.body.classList.toggle('bed-mode');
+    const isBed = document.body.classList.contains('bed-mode');
+    document.getElementById('bedBtn').innerHTML = `<i data-lucide="${isBed ? 'sun' : 'moon'}"></i>`;
+    lucide.createIcons();
+}
+
+function scrollToTop() { window.scrollTo({ top: 0, behavior: 'smooth' }); }
+
+window.onload = () => { lucide.createIcons(); fetchAll(); };
+</script>
+</body>
+</html>
