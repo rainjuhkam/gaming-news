@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>Gaming News</title>
+    
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+    <style>
+        :root { color-scheme: dark; }
+        body { 
+            margin: 0; background: #000; color: #e5e5e7; 
+            font-family: -apple-system, sans-serif; 
+            -webkit-tap-highlight-color: transparent; 
+            transition: background 0.3s ease; 
+        }
+
+        /* --- System Override --- */
+        .no-select {
+            -webkit-touch-callout: none !important;
+            -webkit-user-select: none !important;
+            user-select: none !important;
+        }
+
+        /* --- Fixed Header --- */
+        header { 
+            position: fixed; top: 0; left: 0; right: 0;
+            background: rgba(10, 10, 10, 0.95); backdrop-filter: blur(15px); -webkit-backdrop-filter: blur(15px);
+            z-index: 1000; border-bottom: 1px solid #1c1c1e;
+            height: calc(60px + env(safe-area-inset-top));
+            display: flex; align-items: flex-end; justify-content: space-between;
+            padding: 0 20px 12px; box-sizing: border-box;
+        }
+
+        .app-title { 
+            font-family: 'Press Start 2P', cursive; font-size: 10px; color: #fff; 
+            text-transform: uppercase; margin: 0; letter-spacing: 1px;
+            transition: color 0.3s ease;
+        }
+        
+        .bed-mode-toggle { cursor: pointer; color: #888; transition: color 0.3s ease; display: flex; align-items: center;}
+        .lucide { width: 18px; height: 18px; }
+
+        body.bed-mode .app-title { color: #444; }
+        body.bed-mode .bed-mode-toggle { color: #444; }
+        body.bed-mode #feed-container { opacity: 0.25; filter: grayscale(0.6); }
+
+        /* --- Feed Layout --- */
+        #feed-container { 
+            margin-top: calc(60px + env(safe-area-inset-top)); 
+            padding-bottom: 80px; transition: opacity 0.4s ease, filter 0.4s ease;
+        }
+
+        #ptr { 
+            height: 0; overflow: hidden; text-align: center; background: #111;
+            font-family: 'Press Start 2P', cursive; font-size: 8px; color: #555;
+            display: flex; align-items: center; justify-content: center;
+        }
+
+        .card { border-bottom: 1px solid #1c1c1e; padding-bottom: 20px; margin-bottom: 20px; }
+        
+        .thumb-wrapper { width: 100%; aspect-ratio: 16/9; background: #111; overflow: hidden; display: block; }
+        .thumb-wrapper img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+        .content { padding: 15px 16px; }
+        
+        /* Restored Description Toggle */
+        .title-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; cursor: pointer; }
+        .title { font-size: 18px; font-weight: 700; color: #fff; line-height: 1.3; margin-bottom: 4px; flex: 1; }
+        .expand-icon { color: #888; transition: transform 0.3s ease; padding-top: 2px; }
+        .card.expanded .expand-icon { transform: rotate(180deg); }
+        
+        .meta { font-size: 11px; color: #aaa; text-transform: uppercase; font-weight: 600; margin-bottom: 8px; }
+        
+        .description { 
+            font-size: 14px; color: #aaa; line-height: 1.5; 
+            max-height: 0; overflow: hidden; opacity: 0;
+            transition: max-height 0.4s ease, opacity 0.4s ease, margin 0.4s ease;
+        }
+        .card.expanded .description { max-height: 500px; opacity: 1; margin-top: 10px; margin-bottom: 10px; }
+        .read-more { color: #4caf50; font-size: 12px; text-transform: uppercase; text-decoration: none; font-weight: bold; }
+
+        /* --- iOS Slide Toggle Autoscroll --- */
+        #scrollNav {
+            position: fixed; bottom: calc(20px + env(safe-area-inset-bottom)); right: 20px;
+            display: flex; flex-direction: column; align-items: flex-end; gap: 12px; z-index: 2000;
+            opacity: 0; visibility: hidden; transition: opacity 0.3s;
+        }
+        #scrollNav.visible { opacity: 1; visibility: visible; }
+
+        .nav-fab {
+            width: 44px; height: 44px; background: rgba(30, 30, 32, 0.9); border: 1px solid #444;
+            border-radius: 50%; color: #ccc; display: flex; align-items: center; 
+            justify-content: center; backdrop-filter: blur(10px);
+        }
+
+        /* Pill Track */
+        .scroll-track {
+            position: relative; width: 100px; height: 44px;
+            background: rgba(30, 30, 32, 0.9); border: 1px solid #444; border-radius: 22px;
+            display: flex; align-items: center; justify-content: flex-start;
+            backdrop-filter: blur(10px); padding: 0 12px; box-sizing: border-box;
+            overflow: hidden;
+        }
+
+        .lock-icon-bg { color: #666; font-size: 14px; }
+
+        /* The Draggable Thumb */
+        .scroll-thumb {
+            position: absolute; top: 0; right: 0; width: 44px; height: 44px;
+            background: #444; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+            color: #fff; transition: transform 0.1s ease, background 0.3s;
+            box-shadow: -2px 0 10px rgba(0,0,0,0.5);
+        }
+        
+        .scroll-thumb.locked { background: #2196f3; transform: translateX(-56px) !important; transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
+
+        /* Transparent Overlay to catch touches without triggering iOS UI */
+        .touch-overlay {
+            position: absolute; top: -10px; left: -10px; right: -10px; bottom: -10px;
+            z-index: 10; cursor: pointer;
+        }
+
+        body.bed-mode .nav-fab, body.bed-mode .scroll-track, body.bed-mode .scroll-thumb { 
+            background: rgba(15, 15, 15, 0.8); border-color: #222; color: #444; 
+        }
+
+        .loading { text-align: center; padding: 40px; font-family: 'Press Start 2P'; font-size: 7px; color: #444; }
+    </style>
+</head>
+<body>
+
+<header id="mainHeader">
+    <div class="app-title">Gaming News</div>
+    <div class="bed-mode-toggle" id="bedBtn" onclick="toggleBed()">
+        <i data-lucide="moon"></i>
+    </div>
+</header>
+
+<div id="feed-container">
+    <div id="ptr">PULL TO REFRESH</div>
+    <div id="status" class="loading">CONNECTING TO LIVE SERVERS...</div>
+    <div id="feed"></div>
+    <div id="loadingMore" class="loading" style="display: none;">LOADING MORE...</div>
+</div>
+
+<div id="scrollNav" class="no-select">
+    <div class="nav-fab no-select" onclick="scrollToTop()">
+        <i data-lucide="chevron-up"></i>
+    </div>
+    
+    <div class="scroll-track no-select" id="scrollTrack">
+        <div class="lock-icon-bg"><i data-lucide="lock"></i></div>
+        <div class="scroll-thumb no-select" id="scrollThumb">
+            <div class="touch-overlay" id="touchOverlay"></div>
+            <i data-lucide="chevron-down"></i>
+        </div>
+    </div>
+</div>
+
+<script>
+const feeds = [
+    { url: "https://www.videogameschronicle.com/feed/", name: "VGC" },
+    { url: "https://aftermath.site/feed", name: "Aftermath" },
+    { url: "https://www.pcgamer.com/rss/", name: "PC Gamer" },
+    { url: "https://www.eurogamer.net/feed", name: "Eurogamer" },
+    { url: "https://kotaku.com/rss", name: "Kotaku" },
+    { url: "https://www.polygon.com/rss/index.xml", name: "Polygon" },
+    { url: "https://www.gamespot.com/feeds/mashup/", name: "GameSpot" }
+];
+
+let allArticles = [];
+let renderedCount = 0;
+const chunkSize = 15;
+let isFetching = false;
+
+// Reverting back to codetabs proxy to restore basic load functionality
+const proxy = "https://api.codetabs.com/v1/proxy?quest=";
+
+function stripHTML(html) {
+    let tmp = document.createElement("DIV");
+    tmp.innerHTML = html;
+    let text = tmp.textContent || tmp.innerText || "";
+    return text.length > 200 ? text.substring(0, 197) + "..." : text;
+}
+
+async function fetchAll(isRefresh = false) {
+    if (isFetching) return;
+    isFetching = true;
+    if (!isRefresh) document.getElementById("status").style.display = "block";
+
+    try {
+        const fetchPromises = feeds.map(async (f) => {
+            try {
+                const nocache = f.url + "?update=" + new Date().getTime() + Math.random();
+                const response = await fetch(proxy + encodeURIComponent(nocache));
+                const text = await response.text();
+                const xml = new DOMParser().parseFromString(text, "text/xml");
+                const items = xml.querySelectorAll("item, entry");
+                
+                items.forEach(el => {
+                    const title = el.querySelector("title")?.textContent || "";
+                    const link = el.querySelector("link")?.getAttribute("href") || el.querySelector("link")?.textContent || "";
+                    const date = new Date(el.querySelector("pubDate, published, updated")?.textContent || 0);
+                    
+                    let descRaw = el.querySelector("description")?.textContent || el.querySelector("content\\:encoded, encoded")?.textContent || "";
+                    const cleanDesc = stripHTML(descRaw);
+
+                    const rawStr = new XMLSerializer().serializeToString(el);
+                    let imgMatch = rawStr.match(/<media:content[^>]+url=["']([^"']+)["']/i) ||
+                                   rawStr.match(/<enclosure[^>]+url=["']([^"']+)["']/i) ||
+                                   rawStr.match(/<img[^>]+src=["']([^"']+)["']/i);
+                    
+                    if (title && link) {
+                        allArticles.push({ title, link, date, source: f.name, image: imgMatch ? imgMatch[1] : null, description: cleanDesc });
+                    }
+                });
+            } catch (e) { console.error("Feed error on: " + f.name); }
+        });
+
+        await Promise.all(fetchPromises);
+        
+        allArticles = Array.from(new Map(allArticles.map(a => [a.link, a])).values());
+        allArticles.sort((a, b) => b.date - a.date);
+        
+        document.getElementById("status").style.display = "none";
+        if (isRefresh) { renderedCount = 0; document.getElementById("feed").innerHTML = ""; }
+        renderNextChunk();
+    } finally { isFetching = false; }
+}
+
+function renderNextChunk() {
+    const container = document.getElementById("feed");
+    const nextBatch = allArticles.slice(renderedCount, renderedCount + chunkSize);
+    
+    nextBatch.forEach((a) => {
+        const card = document.createElement("div");
+        card.className = "card";
+        const imgHtml = a.image ? `<div class="thumb-wrapper" onclick="window.open('${a.link}', '_blank')"><img src="${a.image}" loading="lazy"></div>` : "";
+        
+        card.innerHTML = `
+            ${imgHtml}
+            <div class="content">
+                <div class="title-row" onclick="this.parentElement.parentElement.classList.toggle('expanded')">
+                    <div class="title">${a.title}</div>
+                    <i data-lucide="chevron-down" class="expand-icon"></i>
+                </div>
+                <div class="meta">${a.source} • ${formatSmartDate(a.date)}</div>
+                <div class="description">${a.description} <br><br><a href="${a.link}" target="_blank" class="read-more">Read Full Article</a></div>
+            </div>
+        `;
+        container.appendChild(card);
+    });
+    lucide.createIcons();
+    renderedCount += nextBatch.length;
+}
+
+function formatSmartDate(dateObj) {
+    const now = new Date();
+    const timeStr = dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const articleDay = new Date(dateObj.getFullYear(), dateObj.getMonth(), dateObj.getDate());
+    const daysOld = Math.floor((today - articleDay) / (1000 * 60 * 60 * 24));
+
+    if (daysOld === 0) {
+        const diffMins = Math.floor((now - dateObj) / 1000 / 60);
+        if (diffMins < 60) return diffMins + "m ago";
+        return timeStr;
+    } else if (daysOld === 1) return `Yesterday • ${timeStr}`;
+    else if (daysOld <= 3) return `${dateObj.toLocaleDateString('en-US', {month: 'short', day: 'numeric'})} • ${timeStr}`;
+    else return dateObj.toLocaleDateString('en-US', {month: 'short', day: 'numeric'});
+}
+
+window.onscroll = () => {
+    const nav = document.getElementById("scrollNav");
+    if (window.scrollY > 400) nav.classList.add("visible");
+    else nav.classList.remove("visible");
+
+    if (!isFetching && (window.innerHeight + window.scrollY) >= document.body.offsetHeight - 800) {
+        renderNextChunk();
+    }
+};
+
+/* --- Slide-to-Lock Autoscroll Logic --- */
+let scrollRaf;
+let isScrolling = false;
+let isLocked = false;
+const scrollSpeed = 1.2;
+let startX = 0;
+let currentX = 0;
+
+const overlay = document.getElementById('touchOverlay');
+const thumb = document.getElementById('scrollThumb');
+
+function performScroll() {
+    if (isScrolling || isLocked) {
+        window.scrollBy(0, scrollSpeed);
+        scrollRaf = requestAnimationFrame(performScroll);
+    }
+}
+
+function stopAutoScroll() {
+    isScrolling = false;
+    isLocked = false;
+    thumb.classList.remove('locked');
+    thumb.style.transform = `translateX(0px)`;
+    cancelAnimationFrame(scrollRaf);
+}
+
+// Touch Start
+overlay.addEventListener('touchstart', (e) => {
+    e.preventDefault(); 
+    isScrolling = true;
+    isLocked = false;
+    startX = e.touches[0].clientX;
+    thumb.style.transition = 'none';
+    cancelAnimationFrame(scrollRaf);
+    performScroll();
+}, {passive: false});
+
+// Touch Move
+overlay.addEventListener('touchmove', (e) => {
+    if (!isScrolling) return;
+    e.preventDefault();
+    let moveX = e.touches[0].clientX - startX;
+    
+    // Constrain movement: only left, max 56px
+    if (moveX > 0) moveX = 0;
+    if (moveX < -56) moveX = -56;
+    
+    thumb.style.transform = `translateX(${moveX}px)`;
+    currentX = moveX;
+}, {passive: false});
+
+// Touch End
+overlay.addEventListener('touchend', (e) => {
+    if (!isScrolling) return;
+    e.preventDefault();
+    isScrolling = false;
+    thumb.style.transition = 'transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275), background 0.3s';
+    
+    if (currentX <= -40) {
+        isLocked = true;
+        thumb.classList.add('locked');
+        performScroll(); 
+    } else {
+        stopAutoScroll(); 
+    }
+    currentX = 0;
+});
+
+// Tap anywhere to break lock
+document.addEventListener('touchstart', (e) => {
+    if (isLocked && !e.target.closest('#scrollTrack')) stopAutoScroll();
+}, {passive: true});
+
+/* --- PTR Logic --- */
+let ptrY = 0;
+const ptr = document.getElementById("ptr");
+document.addEventListener('touchstart', e => { if (window.scrollY <= 0) ptrY = e.touches[0].clientY; }, {passive: true});
+document.addEventListener('touchmove', e => {
+    if (ptrY > 0 && window.scrollY <= 0) {
+        let dy = e.touches[0].clientY - ptrY;
+        if (dy > 0) ptr.style.height = Math.min(dy * 0.4, 50) + "px";
+    }
+}, {passive: true});
+document.addEventListener('touchend', () => {
+    if (parseInt(ptr.style.height) > 40) {
+        ptr.innerText = "LOADING...";
+        fetchAll(true).then(() => { ptr.style.height = "0"; ptr.innerText = "PULL TO REFRESH"; });
+    } else ptr.style.height = "0";
+    ptrY = 0;
+}, {passive: true});
+
+function toggleBed() {
+    document.body.classList.toggle('bed-mode');
+    const isBed = document.body.classList.contains('bed-mode');
+    document.getElementById('bedBtn').innerHTML = `<i data-lucide="${isBed ? 'sun' : 'moon'}"></i>`;
+    lucide.createIcons();
+}
+
+function scrollToTop() { window.scrollTo({ top: 0, behavior: 'smooth' }); }
+
+window.onload = () => { lucide.createIcons(); fetchAll(); };
+</script>
+</body>
+</html>
